@@ -2,6 +2,8 @@ import React from 'react'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
+import remarkMath from 'remark-math-extended'
+import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { cn } from '@/lib/utils'
@@ -61,6 +63,7 @@ const commentMarkdownFileUriUrlTransform: UrlTransform = (value, key, node) => {
 // remark-breaks converts single newlines to <br>, keeping backward compat
 // with existing plain-text comments that rely on newline formatting.
 const remarkPlugins = [remarkGfm, remarkBreaks]
+const mathRemarkPlugins = [remarkGfm, remarkBreaks, remarkMath]
 
 const GITHUB_REFERENCE_PATTERN = /(?:\b([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+))?#([1-9][0-9]*)\b/g
 
@@ -178,6 +181,11 @@ const commentMarkdownSanitizeSchema = {
 // Why: GitHub comments often include safe raw HTML (`<sub>`, `<details>`,
 // `<br />`). Parse it, then sanitize immediately before React renders it.
 const rehypePlugins: MarkdownPlugins = [rehypeRaw, [rehypeSanitize, commentMarkdownSanitizeSchema]]
+const mathRehypePlugins: MarkdownPlugins = [
+  rehypeRaw,
+  [rehypeSanitize, commentMarkdownSanitizeSchema],
+  rehypeKatex
+]
 
 type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   content: string
@@ -186,6 +194,7 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   expandImages?: boolean
+  enableMath?: boolean
 }
 
 // Why forwardRef + rest props: Radix's HoverCardTrigger asChild merges a ref
@@ -201,6 +210,7 @@ const CommentMarkdown = React.memo(
       onLinkClick,
       allowFileUriLinks = false,
       expandImages = false,
+      enableMath = false,
       ...rest
     },
     ref
@@ -217,10 +227,11 @@ const CommentMarkdown = React.memo(
         ? createDocumentCommentMarkdownComponents(onLinkClick)
         : createCompactCommentMarkdownComponents(onLinkClick, expandImages)
     }, [expandImages, variant, onLinkClick])
-    const activeRemarkPlugins = React.useMemo(
-      () => (githubRepo ? [...remarkPlugins, remarkGitHubReferences(githubRepo)] : remarkPlugins),
-      [githubRepo]
-    )
+    const activeRemarkPlugins = React.useMemo(() => {
+      const basePlugins = enableMath ? mathRemarkPlugins : remarkPlugins
+      return githubRepo ? [...basePlugins, remarkGitHubReferences(githubRepo)] : basePlugins
+    }, [enableMath, githubRepo])
+    const activeRehypePlugins = enableMath ? mathRehypePlugins : rehypePlugins
 
     return (
       <div
@@ -237,7 +248,7 @@ const CommentMarkdown = React.memo(
       >
         <Markdown
           remarkPlugins={activeRemarkPlugins}
-          rehypePlugins={rehypePlugins}
+          rehypePlugins={activeRehypePlugins}
           components={components}
           urlTransform={
             allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
